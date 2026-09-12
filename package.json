@@ -1,0 +1,14 @@
+{
+  "name": "pi-claude-code-ui",
+  "private": true,
+  "type": "module",
+  "description": "Claude Code-identical TUI for Pi: clawd header, \u23fa/\u23bf tools, shimmering verbs.",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --test format.test.ts tick.test.ts live-thinking.test.ts"
+  }
+}
