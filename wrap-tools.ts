@@ -1,5 +1,15 @@
-import { type Theme, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
+import {
+	createEditToolDefinition,
+	createFindToolDefinition,
+	createGrepToolDefinition,
+	createLsToolDefinition,
+	createReadToolDefinition,
+	createWriteToolDefinition,
+	type Theme,
+	ToolExecutionComponent,
+} from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { keepOwnRenderer, resultIsVisiblyEmpty, shouldFallbackEmptyResult } from "./keep-renderer.ts";
 import {
 	renderCallLine,
 	renderResultBlock,
@@ -8,7 +18,6 @@ import {
 } from "./tool-render.ts";
 
 const PATCH = Symbol.for("claude-code-ui:mcp-tool-patch:v1");
-const BUILTINS = new Set(["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"]);
 
 type ToolDefinitionLike = {
 	label?: string;
@@ -34,6 +43,36 @@ type OriginalMethods = Pick<
 
 type PatchState = OriginalMethods;
 
+type StockPair = { call?: unknown; result?: unknown };
+
+let stockCache: Record<string, StockPair> | undefined;
+
+function pickStock(definition: { renderCall?: unknown; renderResult?: unknown }): StockPair {
+	return { call: definition.renderCall, result: definition.renderResult };
+}
+
+function stockRenderers(): Record<string, StockPair> {
+	if (stockCache) return stockCache;
+	try {
+		stockCache = {
+			read: pickStock(createReadToolDefinition(".")),
+			edit: pickStock(createEditToolDefinition(".")),
+			write: pickStock(createWriteToolDefinition(".")),
+			grep: pickStock(createGrepToolDefinition(".")),
+			find: pickStock(createFindToolDefinition(".")),
+			ls: pickStock(createLsToolDefinition(".")),
+		};
+	} catch {
+		// ponytail: if Pi's definition factories change, restyle every builtin
+		stockCache = {};
+	}
+	return stockCache;
+}
+
+function stockFor(toolName: string, which: "call" | "result"): unknown {
+	return stockRenderers()[toolName]?.[which];
+}
+
 function existingRenderers(instance: PatchedPrototype, state: PatchState): { call: unknown; result: unknown } {
 	return {
 		call: state.getCallRenderer.call(instance),
@@ -41,11 +80,14 @@ function existingRenderers(instance: PatchedPrototype, state: PatchState): { cal
 	};
 }
 
-/** Third-party tools that already own a renderer keep it. Built-ins are restyled. */
-function ownsRenderer(instance: PatchedPrototype, state: PatchState): boolean {
-	if (BUILTINS.has(instance.toolName)) return false;
+function keepers(instance: PatchedPrototype, state: PatchState) {
 	const { call, result } = existingRenderers(instance, state);
-	return Boolean(call || result);
+	return {
+		call,
+		result,
+		keepCall: keepOwnRenderer(instance.toolName, call, stockFor(instance.toolName, "call")),
+		keepResult: keepOwnRenderer(instance.toolName, result, stockFor(instance.toolName, "result")),
+	};
 }
 
 function restoreExistingPatch(proto: PatchedPrototype): void {
@@ -75,6 +117,25 @@ function resultRenderer(toolName: string) {
 	) => new Text(renderResultBlock(toolName, context.args, result, options, theme, context), 0, 0);
 }
 
+type ResultRenderer = (
+	result: { content?: Array<{ type?: string; text?: string }>; details?: unknown },
+	options: { expanded: boolean; isPartial: boolean },
+	theme: Theme,
+	context: ClaudeToolRenderContext,
+) => { render?: (width: number) => string[] };
+
+function withEmptyResultFallback(toolName: string, keepCall: boolean, keepResult: boolean, own: unknown) {
+	if (typeof own !== "function") return resultRenderer(toolName);
+	const fallback = resultRenderer(toolName);
+	return (result: Parameters<ResultRenderer>[0], options: Parameters<ResultRenderer>[1], theme: Theme, context: ClaudeToolRenderContext) => {
+		const rendered = (own as ResultRenderer)(result, options, theme, context);
+		if (shouldFallbackEmptyResult(keepCall, keepResult, resultIsVisiblyEmpty(rendered))) {
+			return fallback(result, options, theme, context);
+		}
+		return rendered;
+	};
+}
+
 /**
  * Install display-only render fallbacks. This deliberately does not register or
  * replace tools, so sandbox/SSH/permission extensions keep control of execution.
@@ -95,23 +156,25 @@ export function installMcpWrap(): () => void {
 	proto[PATCH] = state;
 
 	proto.hasRendererDefinition = function (this: PatchedPrototype) {
-		// Unknown/restored tool calls have no definition, but can still use our fallback.
-		return ownsRenderer(this, state) ? state.hasRendererDefinition.call(this) : true;
+		const { keepCall, keepResult } = keepers(this, state);
+		return keepCall && keepResult ? state.hasRendererDefinition.call(this) : true;
 	};
 
 	proto.getRenderShell = function (this: PatchedPrototype) {
-		return ownsRenderer(this, state) ? state.getRenderShell.call(this) : "self";
+		const { keepCall, keepResult } = keepers(this, state);
+		return keepCall && keepResult ? state.getRenderShell.call(this) : "self";
 	};
 
 	proto.getCallRenderer = function (this: PatchedPrototype) {
-		if (ownsRenderer(this, state)) return existingRenderers(this, state).call;
-		return callRenderer(this.toolName, this.toolDefinition, this.cwd);
+		const { call, keepCall } = keepers(this, state);
+		return keepCall ? call : callRenderer(this.toolName, this.toolDefinition, this.cwd);
 	};
 
-	proto.getResultRenderer = function (this: PatchedPrototype) {
-		if (ownsRenderer(this, state)) return existingRenderers(this, state).result;
-		return resultRenderer(this.toolName);
-	};
+proto.getResultRenderer = function (this: PatchedPrototype) {
+	const { result, keepCall, keepResult } = keepers(this, state);
+	if (!keepResult) return resultRenderer(this.toolName);
+	return withEmptyResultFallback(this.toolName, keepCall, keepResult, result);
+};
 
 	return () => {
 		if (proto[PATCH] !== state) return;

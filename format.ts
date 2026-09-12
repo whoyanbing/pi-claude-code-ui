@@ -80,18 +80,18 @@ const TOOLS: Record<string, ToolSpec> = {
 		arg: (args, cwd) => {
 			const pattern = clip(args.pattern, 48);
 			const quoted = JSON.stringify(pattern);
-				const inPath = args.path ? ` in ${clip(shortPath(String(args.path), cwd), 32)}` : "";
-				return `${quoted}${inPath}`;
-			},
+			const inPath = args.path ? ` in ${clip(shortPath(String(args.path), cwd), 32)}` : "";
+			return `${quoted}${inPath}`;
+		},
 		summary: matchSummary("line", "lines", "No matches found", /^no matches/i),
 	},
 	find: {
 		title: "Glob",
 		arg: (args, cwd) => {
 			const pattern = clip(args.pattern, 48);
-				const inPath = args.path ? ` in ${clip(shortPath(String(args.path), cwd), 32)}` : "";
-				return `${pattern}${inPath}`;
-			},
+			const inPath = args.path ? ` in ${clip(shortPath(String(args.path), cwd), 32)}` : "";
+			return `${pattern}${inPath}`;
+		},
 		summary: matchSummary("file", "files", "No files found", /^no (files|matches)/i),
 	},
 	ls: {

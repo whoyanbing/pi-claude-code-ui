@@ -10,6 +10,7 @@ Claude Code 风格的 Pi TUI 主题扩展：clawd header、`⏺`/`⎿` 工具行
 | `tick.ts` | 全局 90ms ticker（working + tool spinner 共用） |
 | `tool-render.ts` | 工具调用行 + 结果块渲染、spinner 订阅 ticker、运行中 live preview（尾部 5 行） |
 | `wrap-tools.ts` | `ToolExecutionComponent` 原型补丁（仅显示层，不碰执行） |
+| `keep-renderer.ts` | 是否保留第三方/hashline renderer 的纯函数 |
 | `format.ts` | 工具标题/参数/结果摘要纯函数 |
 | `working.ts` | `Thinking…/Cooking…` 微光动词 + elapsed 计时 |
 | `editor.ts` | 圆角 prompt 输入框 + 右下时钟 |
@@ -26,7 +27,7 @@ Claude Code 风格的 Pi TUI 主题扩展：clawd header、`⏺`/`⎿` 工具行
 - **spinner pending 只看 `isPartial`**：历史重建的组件 Pi 永远不调 `markExecutionStarted()`，`executionStarted` 恒 false（曾导致 reload 后星号常闪，见 tool-render.ts 注释）。
 - **主题/ thinking label 每个 load 只应用一次**：`session_start` 每次都强制切主题会跟用户 `/theme` 打架。
 - **单全局 90ms ticker**：`working` 和 tool spinner 共用 `tick.ts`，`/reload` 用 `Symbol.for` 覆盖同一 key。多工具并发时一次 `requestRender`，掉线/导出路径的僵尸 entry 靠 2s staleness 自愈。
-- **第三方工具按自带 renderer 保留**：不再白名单 `Agent`/`Agents` 名字。
+- **第三方工具按自带 renderer 保留**：非内置名有 renderer 就不动。内置名只覆盖 Pi 原版 renderer，hashline 换过的 `read` 结果（锚点行号）会留下，调用行仍走 `⏺ Read(path)`；折叠成空结果时回退到 `⎿ Read N lines`。
 - **live thinking**：仅在 `hideThinkingBlock=true` 时生效；Ctrl+T 展开全部时不干预。
 
 ## 已知的 Pi 版本耦合点（升级 Pi 后重点看）

@@ -9,6 +9,6 @@
     ]
   },
   "scripts": {
-    "test": "node --test format.test.ts tick.test.ts live-thinking.test.ts"
+    "test": "node --test format.test.ts tick.test.ts live-thinking.test.ts wrap-tools.test.ts"
   }
 }
