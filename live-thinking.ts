@@ -83,8 +83,9 @@ function restoreExistingPatch(proto: AssistantProto): void {
 
 function refreshUi(ctx?: ExtensionContext): void {
 	try {
-		ctx?.ui?.invalidate?.();
-		ctx?.ui?.requestRender?.();
+		// One paint pass suffices; prefer requestRender, fall back to invalidate.
+		if (typeof ctx?.ui?.requestRender === "function") ctx.ui.requestRender();
+		else ctx?.ui?.invalidate?.();
 	} catch {
 		/* noop */
 	}

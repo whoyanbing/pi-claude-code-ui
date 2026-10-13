@@ -3,7 +3,6 @@ import { applyEditor, stopEditorClock } from "./editor.ts";
 import { applyFooter } from "./footer.ts";
 import { applyHeader, maybeShowBanner, registerBanner } from "./header.ts";
 import { attachLiveThinking, patchLiveThinking } from "./live-thinking.ts";
-import { installToolGrouping } from "./tool-group.ts";
 import { stopToolSpinners } from "./tool-render.ts";
 import { patchUserMessages } from "./user-message.ts";
 import { attachWorking } from "./working.ts";
@@ -54,7 +53,6 @@ export default function (pi: ExtensionAPI) {
 	let uninstallToolWrap: (() => void) | undefined;
 	let unpatchUserMessages: (() => void) | undefined;
 	let unpatchLiveThinking: (() => void) | undefined;
-	let uninstallGrouping: (() => void) | undefined;
 
 	pi.on("session_start", async (event, ctx) => {
 		ctxHolder.current = ctx;
@@ -67,13 +65,10 @@ export default function (pi: ExtensionAPI) {
 		unpatchUserMessages = undefined;
 		unpatchLiveThinking?.();
 		unpatchLiveThinking = undefined;
-		uninstallGrouping?.();
-		uninstallGrouping = undefined;
 		if (ctx.mode !== "tui" || !ctx.hasUI) return;
 		uninstallToolWrap = installMcpWrap();
 		unpatchUserMessages = patchUserMessages();
 		unpatchLiveThinking = patchLiveThinking();
-		uninstallGrouping = installToolGrouping();
 		maybeShowBanner(pi, ctx, event.reason);
 		applyChrome(pi, ctx);
 		applyThemeOnce(ctx);
@@ -117,8 +112,6 @@ export default function (pi: ExtensionAPI) {
 		unpatchUserMessages = undefined;
 		unpatchLiveThinking?.();
 		unpatchLiveThinking = undefined;
-		uninstallGrouping?.();
-		uninstallGrouping = undefined;
 		uninstallToolWrap?.();
 		uninstallToolWrap = undefined;
 		ctxHolder.current = undefined;

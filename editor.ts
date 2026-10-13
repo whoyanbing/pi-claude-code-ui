@@ -11,9 +11,25 @@ const SIDE_COLS = 2;
 
 let clockTimer: ReturnType<typeof setTimeout> | undefined;
 
-function formatClock(date = new Date()): string {
-	const pad = (value: number) => String(value).padStart(2, "0");
-	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+// render() runs per keystroke; the label only changes once a minute.
+let lastScheduledTargetMinute = -1;
+const clockCache = { minute: -1, label: "", shortLabel: "" };
+
+function updateClockCache(date = new Date()): void {
+	const minute = Math.floor(date.getTime() / 60000);
+	if (minute !== clockCache.minute) {
+		const pad = (value: number) => String(value).padStart(2, "0");
+		clockCache.minute = minute;
+		const hours = pad(date.getHours());
+		const minutes = pad(date.getMinutes());
+		clockCache.shortLabel = `${hours}:${minutes}`;
+		clockCache.label = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${hours}:${minutes}`;
+	}
+}
+
+function formatClock(date = new Date(), compact = false): string {
+	updateClockCache(date);
+	return compact ? clockCache.shortLabel : clockCache.label;
 }
 
 function msUntilNextMinute(date = new Date()): number {
@@ -22,11 +38,21 @@ function msUntilNextMinute(date = new Date()): number {
 
 function scheduleClock(tui: TUI): void {
 	if (clockTimer) clearTimeout(clockTimer);
+	const now = new Date();
+	lastScheduledTargetMinute = Math.floor(now.getTime() / 60000) + 1;
 	clockTimer = setTimeout(() => {
 		tui.requestRender();
 		scheduleClock(tui);
-	}, msUntilNextMinute());
+	}, msUntilNextMinute(now));
 	clockTimer.unref?.();
+}
+
+/** Check if clock timer slipped (e.g. laptop sleep/wake) and self-heal */
+function checkClockHealth(tui: TUI): void {
+	const currentMinute = Math.floor(Date.now() / 60000);
+	if (!clockTimer || currentMinute >= lastScheduledTargetMinute) {
+		scheduleClock(tui);
+	}
 }
 
 function padVisible(line: string, width: number): string {
@@ -62,11 +88,17 @@ function topBorder(
 function bottomBorder(
 	width: number,
 	clock: string,
+	shortClock: string,
 	theme: { fg: (color: "dim", text: string) => string },
 	paint: (text: string) => string,
 ): string {
-	const label = ` ${clock} `;
-	const labelWidth = visibleWidth(label);
+	let label = ` ${clock} `;
+	let labelWidth = visibleWidth(label);
+	// In narrow terminal, fall back to HH:mm instead of dropping the clock completely
+	if (width < labelWidth + 4 && visibleWidth(` ${shortClock} `) + 2 <= width) {
+		label = ` ${shortClock} `;
+		labelWidth = visibleWidth(label);
+	}
 	if (width < labelWidth + 2) return emptyBorder("╰", "╯", width, paint);
 	const fill = Math.max(0, width - 2 - labelWidth);
 	return `${paint("╰")}${paint("─".repeat(fill))}${theme.fg("dim", label)}${paint("╯")}`;
@@ -128,7 +160,8 @@ export function applyEditor(_pi: unknown, ctx: ExtensionContext): void {
 				out.push(`${paint("│")}${prefix}${content}${paint("│")}`);
 			}
 
-			out.push(bottomBorder(width, formatClock(), theme, paint));
+			checkClockHealth(this.tui);
+			out.push(bottomBorder(width, formatClock(undefined, false), formatClock(undefined, true), theme, paint));
 
 			for (let i = 0; i < autoHeight; i++) {
 				const line = inner[bottomIndex + 1 + i] ?? "";

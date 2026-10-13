@@ -80,6 +80,16 @@ function existingRenderers(instance: PatchedPrototype, state: PatchState): { cal
 	};
 }
 
+function keepSingle(
+	instance: PatchedPrototype,
+	state: PatchState,
+	which: "call" | "result",
+): { renderer: unknown; keep: boolean } {
+	const renderer =
+		which === "call" ? state.getCallRenderer.call(instance) : state.getResultRenderer.call(instance);
+	return { renderer, keep: keepOwnRenderer(instance.toolName, renderer, stockFor(instance.toolName, which)) };
+}
+
 function keepers(instance: PatchedPrototype, state: PatchState) {
 	const { call, result } = existingRenderers(instance, state);
 	return {
@@ -166,13 +176,17 @@ export function installMcpWrap(): () => void {
 	};
 
 	proto.getCallRenderer = function (this: PatchedPrototype) {
-		const { call, keepCall } = keepers(this, state);
+		// Hot path: fetch only the call renderer, not both.
+		const { renderer: call, keep: keepCall } = keepSingle(this, state, "call");
 		return keepCall ? call : callRenderer(this.toolName, this.toolDefinition, this.cwd);
 	};
 
 proto.getResultRenderer = function (this: PatchedPrototype) {
-	const { result, keepCall, keepResult } = keepers(this, state);
+	// Hot path: fetch only the result renderer; fall back to the call side
+	// only when the result is kept and needs the empty-result check.
+	const { renderer: result, keep: keepResult } = keepSingle(this, state, "result");
 	if (!keepResult) return resultRenderer(this.toolName);
+	const { keep: keepCall } = keepSingle(this, state, "call");
 	return withEmptyResultFallback(this.toolName, keepCall, keepResult, result);
 };
 

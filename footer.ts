@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { cacheHitSignature, latestCacheHitPercent, type CacheHitEntry } from "./format.ts";
+import { cacheHitSignature, formatModelDisplayName, latestCacheHitPercent, type CacheHitEntry } from "./format.ts";
 
 function formatTokens(tokens: number): string {
 	if (tokens < 1000) return `${tokens}`;
@@ -28,7 +28,8 @@ export function applyFooter(pi: ExtensionAPI, ctx: ExtensionContext): void {
 			},
 			invalidate() {},
 			render(width: number): string[] {
-				const model = ctx.model?.name || ctx.model?.id || "model";
+				const rawModel = ctx.model?.name || ctx.model?.id || "model";
+				const model = formatModelDisplayName(rawModel);
 				const thinking = pi.getThinkingLevel();
 				const thinkingLabel = thinking && thinking !== "off" ? thinking : "";
 				const usage = ctx.getContextUsage();
@@ -56,6 +57,9 @@ export function applyFooter(pi: ExtensionAPI, ctx: ExtensionContext): void {
 					: branch === "detached"
 						? theme.fg("dim", "detached")
 						: theme.fg("accent", branch);
+				const extStatuses = footerData.getExtensionStatuses();
+				const quotaStatus = extStatuses.get("antigravity.quota");
+				const quotaSegment = quotaStatus ? theme.fg("muted", quotaStatus) : "";
 				// Context usage color escalates as the window fills up.
 				const ctxColor =
 					usage?.percent != null && usage.percent >= 95
@@ -67,6 +71,7 @@ export function applyFooter(pi: ExtensionAPI, ctx: ExtensionContext): void {
 				const line = [
 						theme.fg("text", model),
 						thinkingLabel ? theme.fg("accent", thinkingLabel) : "",
+						quotaSegment,
 						ctxLabel ? theme.fg(ctxColor, ctxLabel) : "",
 						cacheSegment,
 						folder ? theme.fg("muted", folder) : "",

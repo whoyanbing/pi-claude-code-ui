@@ -13,22 +13,28 @@ function rgb(r: number, g: number, b: number): string {
 	return `\x1b[38;2;${r};${g};${b}m`;
 }
 
-function shine(text: string, pos: number): string {
-	const chars = [...text];
-	return (
-		chars
-			.map((ch, index) => {
-				const dist = Math.abs(index - pos);
-				let factor = 0;
-				if (dist === 0) factor = 0.65;
-				else if (dist === 1) factor = 0.3;
-				const r = Math.round(ORANGE[0] + (255 - ORANGE[0]) * factor);
-				const g = Math.round(ORANGE[1] + (255 - ORANGE[1]) * factor);
-				const b = Math.round(ORANGE[2] + (255 - ORANGE[2]) * factor);
-				return `${rgb(r, g, b)}${ch}`;
-			})
-			.join("") + RESET
+function mix(factor: number): string {
+	return rgb(
+		Math.round(ORANGE[0] + (255 - ORANGE[0]) * factor),
+		Math.round(ORANGE[1] + (255 - ORANGE[1]) * factor),
+		Math.round(ORANGE[2] + (255 - ORANGE[2]) * factor),
 	);
+}
+
+// Precomputed once: shine() runs every 90ms, no per-frame Math.round/rgb().
+const SHINE_BASE = mix(0);
+const SHINE_NEAR = mix(0.3);
+const SHINE_PEAK = mix(0.65);
+
+function shine(text: string, pos: number): string {
+	let out = "";
+	let index = 0;
+	for (const ch of text) {
+		const dist = Math.abs(index - pos);
+		out += `${dist === 0 ? SHINE_PEAK : dist === 1 ? SHINE_NEAR : SHINE_BASE}${ch}`;
+		index++;
+	}
+	return out + RESET;
 }
 
 function toolActivity(toolName: string, args: unknown, cwd?: string): string {
@@ -51,6 +57,8 @@ export function attachWorking(
 	let verbStarted = 0;
 	let activity = "";
 	let active = false;
+	let lastLabel = "";
+	let lastLabelLen = 0;
 
 	const paint = (ctx: ExtensionContext) => {
 		if (!ctx.hasUI || !active) return;
@@ -61,7 +69,11 @@ export function attachWorking(
 			frame = 0;
 		}
 		const label = activity || `${VERBS[verbIndex] ?? "Working"}…`;
-		const shinePos = frame % (Math.max(1, [...label].length) + 6);
+		if (label !== lastLabel) {
+			lastLabel = label;
+		lastLabelLen = [...label].length;
+		}
+		const shinePos = frame % (Math.max(1, lastLabelLen) + 6);
 		const word = shine(label, shinePos);
 		const spinner = rgb(...ORANGE) + (SPINNER[frame % SPINNER.length] ?? "✶") + RESET;
 		const elapsed = now - startedAt;

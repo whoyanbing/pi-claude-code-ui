@@ -18,7 +18,6 @@ Claude Code 风格的 Pi TUI 主题扩展：clawd header、`⏺`/`⎿` 工具行
 | `header.ts` | 启动 banner（以 session entry 持久化） |
 | `user-message.ts` | 用户消息 `> ` 引用风原型补丁 |
 | `live-thinking.ts` | 流式 thinking 展开，结束后收成 `Thought for Xs` |
-| `tool-group.ts` | 连续同名工具折叠成 `⏺ Read 3 files` 一行（全部完成且未 Ctrl+O 时） |
 | `live-thinking-logic.ts` | live thinking 纯函数（完成判定/时长/摘要） |
 
 ## 设计决策
@@ -36,6 +35,5 @@ Claude Code 风格的 Pi TUI 主题扩展：clawd header、`⏺`/`⎿` 工具行
 2. `user-message.ts` 假设 `UserMessageComponent.render()` 返回 Box padding 行（内容行 1 格前导空格、无边框）+ OSC133 顺序 `END, FINAL, START`。对不上时会自动降级（原样返回）。
 3. `tool-render.ts` 假设 `ToolExecutionComponent` 对完成工具调 `updateResult(result, false)`（`isPartial=false` 即完成）。
 4. `header.ts` banner 依赖 `custom` entry + `registerEntryRenderer`。
-5. `tool-group.ts` 全局补 `Container.prototype.addChild`，依赖 `setToolsExpanded` 的 duck-typed `setExpanded` 和 `ToolExecutionComponent` 的 `isPartial/expanded/result` 字段。
-6. `live-thinking.ts` 依赖 `AssistantMessageComponent.updateContent` + thinking `Text`/`MouseRegion` 占位，以及 `message_update` 的 `thinking_start/end`。
-7. 当前针对 Pi `0.85.x` 验证。
+5. `live-thinking.ts` 依赖 `AssistantMessageComponent.updateContent` + thinking `Text`/`MouseRegion` 占位，以及 `message_update` 的 `thinking_start/end`。
+6. 当前针对 Pi `0.85.x` 验证。

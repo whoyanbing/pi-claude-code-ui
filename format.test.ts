@@ -4,11 +4,11 @@ import { homedir } from "node:os";
 import {
 	callArgument,
 	cleanBashOutput,
-	groupHeader,
 	tailLines,
 	clip,
 	countDiffStats,
 	formatDuration,
+	formatModelDisplayName,
 	formatResultBody,
 	homePath,
 	cacheHitSignature,
@@ -105,10 +105,11 @@ describe("results", () => {
 		assert.equal(resultText({ content: [{ type: "text", text: "hi" }, { type: "image" }] }), "hi");
 		assert.equal(cleanBashOutput("out\nexit code: 1  "), "out");
 	});
-	it("groupHeader pluralizes per tool", () => {
-		assert.equal(groupHeader("read", undefined, 3), "Read 3 files");
-		assert.equal(groupHeader("grep", undefined, 1), "Grep 1 pattern");
-		assert.equal(groupHeader("mcp_foo_bar", undefined, 2), "Foo Bar 2 calls");
+	it("formatModelDisplayName", () => {
+		assert.equal(formatModelDisplayName("Performance"), "Performance");
+		assert.equal(formatModelDisplayName("antigravity/gemini-3.8-flash"), "Gemini 3.8 Flash");
+		assert.equal(formatModelDisplayName("claude-3-7-sonnet-20250219"), "Claude 3.7 Sonnet");
+		assert.equal(formatModelDisplayName("claude-3-5-sonnet (thought: high)"), "Claude 3.5 Sonnet");
 	});
 	it("tailLines keeps last N and counts the rest", () => {
 		assert.deepEqual(tailLines(""), []);

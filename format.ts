@@ -110,9 +110,19 @@ export const LIVE_PREVIEW_LINES = 5;
 
 /** Last `max` non-empty lines of streaming output, for the live preview under a running tool. */
 export function tailLines(text: string, max = LIVE_PREVIEW_LINES): string[] {
-	const lines = text.split("\n").filter((line) => line.trim());
-	if (lines.length <= max) return lines;
-	return [`… +${lines.length - max} lines`, ...lines.slice(-max)];
+	// Single split, walk back: no filter()/slice() copies on long outputs.
+	const lines = text.split("\n");
+	const tail: string[] = [];
+	let nonEmpty = 0;
+	for (let i = lines.length - 1; i >= 0; i--) {
+		const line = lines[i] ?? "";
+		if (!line.trim()) continue;
+		nonEmpty++;
+		if (tail.length < max) tail.push(line);
+	}
+	tail.reverse();
+	if (nonEmpty <= max) return tail;
+	return [`… +${nonEmpty - max} lines`, ...tail];
 }
 
 export function homePath(input: string | undefined): string {
@@ -143,7 +153,8 @@ export function clip(value: unknown, max = MAX_ARG): string {
 	let width = 0;
 	let end = 0;
 	for (const ch of text) {
-		const w = visibleWidth(ch);
+		// ponytail: ASCII fast path, visibleWidth() only for wide chars
+		const w = ch.length === 1 && ch.charCodeAt(0) < 128 ? 1 : visibleWidth(ch);
 		if (width + w > keep) break;
 		width += w;
 		end += ch.length;
@@ -162,34 +173,29 @@ export function oneLine(value: unknown): string {
 	}
 }
 
+// ponytail: no eviction, keys are distinct (name,label) pairs which stay session-bounded
+const titleCache = new Map<string, string>();
+
 export function titleForTool(name: string, label?: string): string {
+	const key = label === undefined ? name : `${name} ${label}`;
+	const hit = titleCache.get(key);
+	if (hit !== undefined) return hit;
 	const mapped = TOOLS[name]?.title;
-	if (mapped) return mapped;
-	if (label && label !== name && !/^MCP(?::|$)/i.test(label)) return label;
-	return name
-		.replace(/^mcp[_:-]+/i, "")
-		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-		.replace(/[_:-]+/g, " ")
-		.replace(/\b\w/g, (ch) => ch.toUpperCase())
-		.trim() || "Tool";
+	let resolved: string;
+	if (mapped) resolved = mapped;
+	else if (label && label !== name && !/^MCP(?::|$)/i.test(label)) resolved = label;
+	else
+		resolved =
+			name
+				.replace(/^mcp[_:-]+/i, "")
+				.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+				.replace(/[_:-]+/g, " ")
+				.replace(/\b\w/g, (ch) => ch.toUpperCase())
+				.trim() || "Tool";
+	titleCache.set(key, resolved);
+	return resolved;
 }
 
-const GROUP_UNITS: Record<string, [string, string]> = {
-	read: ["file", "files"],
-	edit: ["file", "files"],
-	write: ["file", "files"],
-	grep: ["pattern", "patterns"],
-	find: ["pattern", "patterns"],
-	ls: ["directory", "directories"],
-	bash: ["command", "commands"],
-	powershell: ["command", "commands"],
-};
-
-/** `Read 3 files` — header for a collapsed run of same-tool calls. */
-export function groupHeader(toolName: string, label: string | undefined, count: number): string {
-	const [one, many] = GROUP_UNITS[toolName] ?? ["call", "calls"];
-	return `${titleForTool(toolName, label)} ${count} ${count === 1 ? one : many}`;
-}
 
 export function callArgument(toolName: string, args: Record<string, unknown> | undefined, cwd?: string): string {
 	if (!args || typeof args !== "object") return "";
@@ -300,6 +306,45 @@ export function formatDuration(ms: number, mode: "clock" | "thought" = "clock"):
 	const hours = Math.floor(minutes / 60);
 	const minRest = minutes % 60;
 	return minRest ? `${hours}h ${minRest}m` : `${hours}h`;
+}
+
+export function formatModelDisplayName(raw: string): string {
+	if (!raw) return "model";
+	// Strip parenthetical details e.g. "Claude 3.7 Sonnet (thought: high)" -> "Claude 3.7 Sonnet"
+	let cleaned = raw.replace(/\s*\(.*?\)\s*/g, " ").trim();
+	// Strip provider namespace prefix if present e.g. "antigravity/gemini-3.8-flash" -> "gemini-3.8-flash"
+	if (cleaned.includes("/")) {
+		cleaned = cleaned.split("/").pop() || cleaned;
+	}
+	// Strip date stamps at the end e.g. "-20250219"
+	cleaned = cleaned.replace(/-\d{8}$/, "");
+
+	// Normalize well-known model identifiers to human-readable names
+	const lower = cleaned.toLowerCase();
+	if (lower === "performance") return "Performance";
+	if (lower.includes("sonnet")) {
+		if (lower.includes("3-7") || lower.includes("3.7")) return "Claude 3.7 Sonnet";
+		if (lower.includes("3-5") || lower.includes("3.5")) return "Claude 3.5 Sonnet";
+		return "Claude Sonnet";
+	}
+	if (lower.includes("opus")) {
+		if (lower.includes("3-5") || lower.includes("3.5")) return "Claude 3.5 Opus";
+		if (lower.includes("3-7") || lower.includes("3.7")) return "Claude 3.7 Opus";
+		return "Claude Opus";
+	}
+	if (lower.includes("haiku")) return "Claude Haiku";
+	if (lower.includes("gemini")) {
+		if (lower.includes("3.8") || lower.includes("3-8")) return "Gemini 3.8 Flash";
+		if (lower.includes("2.5") || lower.includes("2-5")) return "Gemini 2.5 Flash";
+		if (lower.includes("pro")) return "Gemini Pro";
+		if (lower.includes("flash")) return "Gemini Flash";
+		return "Gemini";
+	}
+	if (lower.includes("gpt-4o")) return "GPT-4o";
+	if (lower.includes("o3-mini")) return "o3-mini";
+	if (lower.includes("o1")) return "o1";
+
+	return cleaned;
 }
 
 type UsageLike = { input?: number; cacheRead?: number; cacheWrite?: number };

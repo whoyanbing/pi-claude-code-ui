@@ -201,7 +201,13 @@ export function renderResultBlock(
 		const rendered = renderDiff(diff);
 		const lines = rendered.split("\n").filter((line, index, all) => !(index === all.length - 1 && line === ""));
 		if (lines.length) {
-			return lines
+			const styled = lines.map((line) => {
+				if (line.startsWith("+")) return theme.fg("success", line);
+				if (line.startsWith("-")) return theme.fg("error", line);
+				if (line.startsWith("@@")) return theme.fg("dim", line);
+				return line;
+			});
+			return styled
 				.map((line, index) => `${indent}${index === 0 ? `${connector}  ` : "   "}${line}`)
 				.join("\n");
 		}
